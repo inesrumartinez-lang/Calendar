@@ -149,6 +149,12 @@ async function fetchData(){
     if(d.error)throw new Error(d.error);
     state.locations=d.locations||[];state.days=d.days||{};state.events=d.events||[];state.requests=d.requests||[];state.polls=d.polls||[];
     state.lastError=null;
+    console.log('[calendario] cargado:',
+      state.locations.length+' destinos,',
+      Object.keys(state.days).length+' días marcados,',
+      state.events.length+' eventos,',
+      state.requests.length+' solicitudes,',
+      state.polls.length+' alternativas');
   }catch(e){
     const msg=e.name==='AbortError'?'Tiempo de espera agotado. El Apps Script no responde.':e.message;
     state.lastError=msg;
@@ -250,6 +256,7 @@ async function confirmAccept(id,destId){
     await post({action:'markDaysRange',dateFrom:r.dateFrom,dateTo:r.dateTo,locationIds:ids});
   }
   flash('✅ Solicitud aceptada y días marcados.');
+  syncSilent();
 }
 async function deleteRequest(id){if(!confirm('Eliminar solicitud?'))return;state.requests=state.requests.filter(r=>r.id!==id);render();await post({action:'deleteRequest',id});}
 
@@ -268,6 +275,17 @@ async function deletePoll(id){if(!confirm('Eliminar alternativa?'))return;state.
 
 // Refresh manual
 async function manualRefresh(){await fetchData();render();flash('Actualizado.');}
+
+// Re-sync silencioso (sin toast) tras escrituras críticas
+async function syncSilent(){await fetchData();render();}
+
+// Auto-refresh cada 30s. Se salta si hay algún modal abierto o estás editando.
+function isUserBusy(){
+  return !!(state.selected||state.showLocMgr||state.showRequests||state.showRequestForm
+    ||state.showPolls||state.showPollForm||state.votingPoll||state.showRangeMark
+    ||state.editingEvent||state.acceptingRequest||state.colorPicker);
+}
+setInterval(()=>{if(!isUserBusy())syncSilent();},30000);
 
 // Marcar rango de días
 function toggleRangeMark(){state.showRangeMark=!state.showRangeMark;render();}
@@ -295,6 +313,7 @@ async function applyRange(){
     await post({action:'markDaysRange',dateFrom:from,dateTo:to,locationIds:[loc]});
   }
   flash('Rango marcado ('+days.length+' días).');
+  syncSilent();
 }
 
 // === RENDER ===
