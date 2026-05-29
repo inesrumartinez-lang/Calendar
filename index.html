@@ -27,7 +27,7 @@ button{cursor:pointer;font-family:var(--ff)}input,select,textarea{font-family:va
 .dow{text-align:center;font-size:11px;font-weight:600;color:var(--muted);padding:2px 0 6px}
 .cell{aspect-ratio:1;border:1px solid var(--border);border-radius:var(--radius);display:flex;flex-direction:column;align-items:flex-start;justify-content:space-between;padding:6px 7px;transition:filter .12s;background:var(--card);position:relative}
 .cell:hover{filter:brightness(.96)}.cell.today{border-color:var(--ink);border-width:2px}
-.day-num{font-size:15px;font-weight:500}.dots{display:flex;gap:3px;flex-wrap:wrap}.ev-dot{width:6px;height:6px;border-radius:50%}
+.day-num{font-size:15px;font-weight:500}.dots{display:flex;gap:3px;flex-wrap:wrap;justify-content:flex-end;width:100%}.ev-dot{width:6px;height:6px;border-radius:50%}
 .overlay{position:fixed;inset:0;background:rgba(30,26,20,.45);display:flex;align-items:flex-end;justify-content:center;z-index:50;animation:fadeIn .15s}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
 .sheet{background:var(--bg);width:100%;max-width:580px;border-radius:20px 20px 0 0;padding:20px 18px 28px;box-shadow:0 -8px 40px rgba(0,0,0,.2);max-height:85vh;overflow-y:auto}
@@ -90,16 +90,22 @@ button{cursor:pointer;font-family:var(--ff)}input,select,textarea{font-family:va
 .mini-cal h4{font-family:var(--fd);font-size:14px;margin-bottom:6px;font-weight:600}
 .mini-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
 .mini-dow{text-align:center;font-size:9px;color:var(--muted);padding:1px 0 3px}
-.mini-cell{aspect-ratio:1;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:11px;cursor:pointer;border:1px solid transparent}
+.mini-cell{aspect-ratio:1;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:11px;cursor:pointer;border:1px solid transparent;position:relative}
 .mini-cell:hover{border-color:var(--border)}.mini-cell.today{font-weight:700;border-color:var(--ink)}
 .multi-toggle{font-size:12px;color:var(--muted);border:1px solid var(--border);background:var(--card);padding:6px 10px;border-radius:8px}
+
+/* NUEVOS ESTILOS - Fondos divididos e iconos */
+.cell.split {background: linear-gradient(to bottom, var(--c1) 50%, var(--c2) 50%);}
+.mini-cell.split {background: linear-gradient(to bottom, var(--c1) 50%, var(--c2) 50%); border:none;}
+.cell-icon {position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 16px; opacity: 0.8; pointer-events: none;}
+.mini-cell .cell-icon {font-size: 10px;}
 </style>
 </head>
 <body>
 <div id="app"><div class="loading">Cargando calendario...</div></div>
 <script>
 const CONFIG = {
-  API_URL: 'https://script.google.com/macros/s/AKfycbyOwO2pMZ7GukmWh1_OHnFsP3zD74Bo6aUQLO26tLL-DGUEJvgLs0m3Cvc_Hrft8b2NOQ/exec ',
+  API_URL: 'https://script.google.com/macros/s/AKfycbyOwO2pMZ7GukmWh1_OHnFsP3zD74Bo6aUQLO26tLL-DGUEJvgLs0m3Cvc_Hrft8b2NOQ/exec',
 };
 const PASTELS = ['#a7d8c8','#f5c6a0','#b8d4e8','#f0b6c5','#c8b8e8','#d6e8a0','#fde2a7','#a7cfe8','#e8c8d6','#b8e8c0','#e8d0a7','#a7e8d8'];
 const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
@@ -149,13 +155,53 @@ async function postPublic(payload){
 }
 
 // === Acciones ===
-async function setDay(date,locId){const prev=state.days[date];if(prev===locId||(!prev&&!locId)){delete state.days[date];locId=null;}else if(locId)state.days[date]=locId;else delete state.days[date];render();await post({action:'setDay',date,locationId:locId||''});}
+async function toggleDayLocation(date, locId) {
+  let cur = state.days[date] || [];
+  if (!Array.isArray(cur)) cur = [cur];
+  
+  if (cur.includes(locId)) {
+    cur = cur.filter(id => id !== locId);
+  } else {
+    if (cur.length < 2) cur.push(locId);
+  }
+  
+  if (cur.length === 0) {
+    delete state.days[date];
+  } else {
+    state.days[date] = cur;
+  }
+  
+  render();
+  await post({action: 'setDayMultiple', date, locationIds: cur});
+}
+
+async function clearDay(date) {
+  delete state.days[date];
+  render();
+  await post({action: 'setDayMultiple', date, locationIds: []});
+}
+
 async function addEvent(date,title,time,locId){if(!title.trim())return;const ev={id:uid(),date,title:title.trim(),time:time||'',locationId:locId||''};state.events.push(ev);render();await post({action:'addEvent',...ev});}
 async function delEvent(id){if(!confirm('Eliminar este evento?'))return;state.events=state.events.filter(e=>e.id!==id);render();await post({action:'delEvent',id});}
 async function saveEvent(id,title,time,locId){const ev=state.events.find(e=>e.id===id);if(!ev)return;ev.title=title;ev.time=time;ev.locationId=locId;state.editingEvent=null;render();await post({action:'delEvent',id});await post({action:'addEvent',...ev});}
 async function addLocation(name,color){if(!name.trim())return;const id=name.trim().toLowerCase().replace(/[^a-zaeioun0-9]/g,'-').replace(/-+/g,'-');if(state.locations.find(l=>l.id===id)){flash('Ya existe.');return;}const loc={id,name:name.trim(),color};state.locations.push(loc);render();await post({action:'addLocation',...loc});}
 async function updateLocation(id,name,color){const loc=state.locations.find(l=>l.id===id);if(!loc)return;if(name!==undefined)loc.name=name;if(color!==undefined)loc.color=color;render();await post({action:'updateLocation',id,name:loc.name,color:loc.color});}
-async function removeLocation(id){if(!confirm('Eliminar destino y datos asociados?'))return;state.locations=state.locations.filter(l=>l.id!==id);Object.keys(state.days).forEach(d=>{if(state.days[d]===id)delete state.days[d];});state.events=state.events.filter(e=>e.locationId!==id);render();await post({action:'removeLocation',id});}
+async function removeLocation(id){
+  if(!confirm('Eliminar destino y datos asociados?'))return;
+  state.locations=state.locations.filter(l=>l.id!==id);
+  Object.keys(state.days).forEach(d=>{
+    let cur = state.days[d];
+    if(Array.isArray(cur)) {
+      state.days[d] = cur.filter(x => x !== id);
+      if(state.days[d].length===0) delete state.days[d];
+    } else if(cur === id) {
+      delete state.days[d];
+    }
+  });
+  state.events=state.events.filter(e=>e.locationId!==id);
+  render();
+  await post({action:'removeLocation',id});
+}
 
 // Solicitudes
 async function submitRequest(dateFrom,dateTo,note){if(!dateFrom){flash('Pon fecha de inicio.');return;}const req={id:uid(),dateFrom,dateTo:dateTo||dateFrom,note:note||''};state.requests.push({...req,status:'pendiente'});state.showRequestForm=false;render();await postPublic({action:'requestDays',...req});flash('Solicitud enviada.');}
@@ -185,7 +231,15 @@ const app=$('#app');
 const y=state.cursor.getFullYear(),mo=state.cursor.getMonth();
 const first=new Date(y,mo,1),lead=(first.getDay()+6)%7,total=new Date(y,mo+1,0).getDate();
 const prefix=`${y}-${String(mo+1).padStart(2,'0')}`;
-const counts={};Object.entries(state.days).forEach(([d,lid])=>{if(d.startsWith(prefix))counts[lid]=(counts[lid]||0)+1;});
+
+const counts={};
+Object.entries(state.days).forEach(([d,locs])=>{
+  if(d.startsWith(prefix)){
+    const arr = Array.isArray(locs) ? locs : [locs];
+    arr.forEach(lid => counts[lid]=(counts[lid]||0)+1);
+  }
+});
+
 const locMap={};state.locations.forEach(l=>locMap[l.id]=l);
 const myRole=isEditor?'editor':'viewer',otherRole=isEditor?'viewer':'editor';
 const pendingPolls=state.polls.filter(p=>p.creator===otherRole&&p.status==='pendiente').length;
@@ -221,8 +275,41 @@ if(pendingReqs>0&&isEditor)h+=`<div class="banner" style="background:linear-grad
 // Grid
 h+='<div class="grid">';DOW.forEach(d=>h+=`<div class="dow">${d}</div>`);
 for(let i=0;i<lead;i++)h+='<div></div>';
-for(let d=1;d<=total;d++){const date=`${y}-${String(mo+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;const locId=state.days[date];const loc=locId?locMap[locId]:null;const evs=state.events.filter(e=>e.date===date);const it=date===todayStr;
-h+=`<button class="cell${it?' today':''}" style="background:${loc?loc.color:'var(--card)'}" onclick="selectDay('${date}')"><span class="day-num" style="color:${loc?darken(loc.color):'var(--ink)'}">${d}</span><span class="dots">${evs.slice(0,4).map(e=>{const el=locMap[e.locationId];return`<span class="ev-dot" style="background:${el?darken(el.color,.2):'#94a3b8'}"></span>`;}).join('')}</span></button>`;}
+for(let d=1;d<=total;d++){
+  const date=`${y}-${String(mo+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+  let locIds=state.days[date] || [];
+  if(!Array.isArray(locIds)) locIds = [locIds]; 
+  
+  const locs = locIds.map(id => locMap[id]).filter(Boolean);
+  const evs=state.events.filter(e=>e.date===date);
+  const it=date===todayStr;
+  
+  let bgStyle = 'background:var(--card);';
+  let classes = `cell${it?' today':''}`;
+  let icon = '';
+  
+  if(locs.length === 1) {
+    bgStyle = `background:${locs[0].color};`;
+  } else if (locs.length === 2) {
+    classes += ' split';
+    bgStyle = `--c1:${locs[0].color}; --c2:${locs[1].color};`;
+    icon = '<span class="cell-icon">✈️</span>';
+  } else if (locs.length > 2) {
+     bgStyle = `background:${locs[0].color};`; 
+  }
+
+  if(evs.length > 0) {
+      icon = '<span class="cell-icon">❗</span>';
+  }
+  
+  const textColor = locs.length > 0 ? darken(locs[0].color) : 'var(--ink)';
+
+h+=`<button class="${classes}" style="${bgStyle}" onclick="selectDay('${date}')">
+    <span class="day-num" style="color:${textColor}">${d}</span>
+    ${icon}
+    <span class="dots">${evs.slice(0,4).map(e=>{const el=locMap[e.locationId];return`<span class="ev-dot" style="background:${el?darken(el.color,.2):'#94a3b8'}"></span>`;}).join('')}</span>
+    </button>`;
+}
 h+='</div>';
 
 // Multi-month
@@ -234,16 +321,57 @@ const mfirst=(mm.getDay()+6)%7,mtotal=new Date(my,mmo+1,0).getDate();
 h+=`<div class="mini-cal"><h4>${MONTHS[mmo]} ${my}</h4><div class="mini-grid">`;
 DOW.forEach(d=>h+=`<div class="mini-dow">${d}</div>`);
 for(let i=0;i<mfirst;i++)h+='<div></div>';
-for(let d=1;d<=mtotal;d++){const date=`${my}-${String(mmo+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;const loc=state.days[date]?locMap[state.days[date]]:null;const it=date===todayStr;
-h+=`<div class="mini-cell${it?' today':''}" style="background:${loc?loc.color:'transparent'};color:${loc?darken(loc.color):'var(--ink)'}" onclick="jumpTo(${my},${mmo},'${date}')">${d}</div>`;}
+for(let d=1;d<=mtotal;d++){
+  const date=`${my}-${String(mmo+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+  let locIds=state.days[date] || [];
+  if(!Array.isArray(locIds)) locIds = [locIds];
+  const locs = locIds.map(id => locMap[id]).filter(Boolean);
+  const it=date===todayStr;
+  
+  let bgStyle = 'background:transparent;';
+  let classes = `mini-cell${it?' today':''}`;
+  let icon = '';
+  
+  if(locs.length === 1) {
+    bgStyle = `background:${locs[0].color};`;
+  } else if (locs.length === 2) {
+    classes += ' split';
+    bgStyle = `--c1:${locs[0].color}; --c2:${locs[1].color}; border:none;`; 
+    icon = '<span class="cell-icon">✈️</span>';
+  }
+  
+  const evs = state.events.filter(e=>e.date===date);
+  if(evs.length > 0) icon = '<span class="cell-icon">❗</span>';
+  
+  const textColor = locs.length > 0 ? darken(locs[0].color) : 'var(--ink)';
+
+h+=`<div class="${classes}" style="${bgStyle};color:${textColor}" onclick="jumpTo(${my},${mmo},'${date}')">${d}${icon}</div>`;}
 h+='</div></div>';}h+='</div>';}
 
 // Day panel
 if(state.selected){const date=state.selected;const dd=new Date(date+'T00:00:00');
-const pretty=`${DAYS_ES[dd.getDay()]} ${fmtD(date)}`;const curLoc=state.days[date];const evs=state.events.filter(e=>e.date===date);
+const pretty=`${DAYS_ES[dd.getDay()]} ${fmtD(date)}`;
+let curLocs=state.days[date] || [];
+if(!Array.isArray(curLocs)) curLocs = [curLocs];
+const evs=state.events.filter(e=>e.date===date);
+
 h+=`<div class="overlay" onclick="closeDay()"><div class="sheet" onclick="event.stopPropagation()"><div class="sheet-head"><div class="sheet-title">${pretty}</div><button class="close" onclick="closeDay()">&times;</button></div>`;
-if(isEditor){h+='<div class="place-row">';state.locations.forEach(l=>{const act=curLoc===l.id;h+=`<button class="place-btn${act?' active':''}" style="background:${act?darken(l.color,.15):l.color};color:${act?'#fff':darken(l.color)};${act?'border-color:'+darken(l.color):''}" onclick="setDay('${date}','${l.id}')">${l.name}</button>`;});h+=`<button class="clear-btn" onclick="setDay('${date}',null)">Quitar</button></div>`;}
-else if(curLoc&&locMap[curLoc]){const l=locMap[curLoc];h+=`<div style="margin-bottom:14px;font-size:14px;color:${darken(l.color)}"><span class="swatch" style="background:${l.color};display:inline-block;vertical-align:middle;margin-right:6px"></span>${l.name}</div>`;}
+if(isEditor){
+  h+='<p style="font-size:12px; color:var(--muted); margin-bottom:8px">Selecciona 1 o 2 destinos.</p>';
+  h+='<div class="place-row">';
+  state.locations.forEach(l=>{
+    const act = curLocs.includes(l.id);
+    const disabled = !act && curLocs.length >= 2 ? 'opacity:0.5; pointer-events:none;' : '';
+    h+=`<button class="place-btn${act?' active':''}" style="background:${act?darken(l.color,.15):l.color};color:${act?'#fff':darken(l.color)};${act?'border-color:'+darken(l.color):''};${disabled}" onclick="toggleDayLocation('${date}','${l.id}')">${l.name}</button>`;
+  });
+  h+=`<button class="clear-btn" onclick="clearDay('${date}')">Limpiar</button></div>`;
+}
+else if(curLocs.length > 0){
+  curLocs.forEach(lid => {
+    const l = locMap[lid];
+    if(l) h+=`<div style="margin-bottom:14px;font-size:14px;color:${darken(l.color)}"><span class="swatch" style="background:${l.color};display:inline-block;vertical-align:middle;margin-right:6px"></span>${l.name}</div>`;
+  });
+}
 h+='<div class="ev-list">';if(evs.length===0)h+='<p class="empty">Sin eventos.</p>';
 evs.forEach(e=>{const el=locMap[e.locationId];const bc=el?el.color:'#ddd';
 if(state.editingEvent===e.id&&isEditor){
@@ -251,7 +379,7 @@ h+=`<div class="edit-row"><input type="text" id="ed-t-${e.id}" value="${e.title}
 else{const dn=isEditor?e.title:`Evento${el?' en '+el.name:''}`;
 h+=`<div class="ev-row" style="border-left-color:${bc}"><span class="ev-time">${e.time||'--'}</span><span class="ev-name">${dn}</span>${isEditor?`<button class="ev-edit" onclick="state.editingEvent='${e.id}';render()">editar</button><button class="ev-del" onclick="delEvent('${e.id}')">borrar</button>`:''}</div>`;}});
 h+='</div>';
-if(isEditor){h+=`<div class="add-row"><input type="text" id="ev-title" placeholder="Nuevo evento..." onkeydown="if(event.key==='Enter')submitEvent('${date}')"><input type="time" id="ev-time"><select id="ev-loc"><option value="">Destino</option>${state.locations.map(l=>`<option value="${l.id}"${l.id===curLoc?' selected':''}>${l.name}</option>`).join('')}</select><button class="btn btn-dark" onclick="submitEvent('${date}')">Anadir</button></div>`;}
+if(isEditor){h+=`<div class="add-row"><input type="text" id="ev-title" placeholder="Nuevo evento..." onkeydown="if(event.key==='Enter')submitEvent('${date}')"><input type="time" id="ev-time"><select id="ev-loc"><option value="">Destino</option>${state.locations.map(l=>`<option value="${l.id}"${curLocs.includes(l.id)?' selected':''}>${l.name}</option>`).join('')}</select><button class="btn btn-dark" onclick="submitEvent('${date}')">Añadir</button></div>`;}
 h+='</div></div>';}
 
 // Request form (viewer create)
