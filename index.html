@@ -121,7 +121,8 @@ let state = {
   votingPoll:null, voteOrder:[],
   colorPicker:null, toast:'', saving:false,
   editingEvent:null, multiMonth:false, acceptingRequest:null,
-  showRangeMark:false, rangeLoc:'', rangeReplace:false, lastError:null
+  showRangeMark:false, rangeLoc:'', rangeReplace:false, lastError:null,
+  showDebug:false, debugOutput:''
 };
 
 const iso = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -139,7 +140,7 @@ async function fetchData(){
   try{
     const controller=new AbortController();
     const timer=setTimeout(()=>controller.abort(),15000);
-    const r=await fetch(CONFIG.API_URL,{signal:controller.signal});
+    const r=await fetch(CONFIG.API_URL+'?t='+Date.now(),{signal:controller.signal});
     clearTimeout(timer);
     if(!r.ok)throw new Error('HTTP '+r.status);
     const txt=await r.text();
@@ -283,9 +284,53 @@ async function syncSilent(){await fetchData();render();}
 function isUserBusy(){
   return !!(state.selected||state.showLocMgr||state.showRequests||state.showRequestForm
     ||state.showPolls||state.showPollForm||state.votingPoll||state.showRangeMark
-    ||state.editingEvent||state.acceptingRequest||state.colorPicker);
+    ||state.editingEvent||state.acceptingRequest||state.colorPicker||state.showDebug);
 }
 setInterval(()=>{if(!isUserBusy())syncSilent();},30000);
+
+// Diagnóstico
+async function runDiagnostic(){
+  state.showDebug=true;
+  state.debugOutput='Probando conexión...';
+  render();
+  let out='';
+  out+='URL del Apps Script:\n'+CONFIG.API_URL+'\n\n';
+  out+='Estado en memoria:\n';
+  out+='  destinos: '+state.locations.length+'\n';
+  out+='  días marcados: '+Object.keys(state.days).length+'\n';
+  out+='  eventos: '+state.events.length+'\n';
+  out+='  solicitudes: '+state.requests.length+'\n';
+  out+='  alternativas: '+state.polls.length+'\n';
+  if(state.lastError)out+='\nÚltimo error: '+state.lastError+'\n';
+  out+='\n--- Probando GET ---\n';
+  try{
+    const t0=Date.now();
+    const r=await fetch(CONFIG.API_URL+'?t='+Date.now());
+    const ms=Date.now()-t0;
+    const txt=await r.text();
+    out+='Status HTTP: '+r.status+'\n';
+    out+='Tiempo: '+ms+'ms\n';
+    out+='Tipo de respuesta: '+(r.headers.get('content-type')||'?')+'\n';
+    out+='Tamaño: '+txt.length+' chars\n\n';
+    out+='Respuesta (primeros 800 chars):\n'+txt.slice(0,800);
+    try{
+      const d=JSON.parse(txt);
+      out+='\n\n✅ JSON válido. Contiene:\n';
+      out+='  locations: '+(d.locations?d.locations.length:'NO')+'\n';
+      out+='  days: '+(d.days?Object.keys(d.days).length:'NO')+'\n';
+      out+='  events: '+(d.events?d.events.length:'NO')+'\n';
+      out+='  requests: '+(d.requests?d.requests.length:'NO')+'\n';
+      out+='  polls: '+(d.polls?d.polls.length:'NO')+'\n';
+      if(d.error)out+='\n⚠️ El servidor devolvió error: '+d.error;
+    }catch(e){
+      out+='\n\n❌ No es JSON válido. Probablemente la URL devuelve HTML (login de Google o error).';
+    }
+  }catch(e){
+    out+='❌ Fallo de red: '+e.message;
+  }
+  state.debugOutput=out;
+  render();
+}
 
 // Marcar rango de días
 function toggleRangeMark(){state.showRangeMark=!state.showRangeMark;render();}
@@ -337,6 +382,7 @@ h+=`<div class="hdr"><div><h1>Calendario de la Ini <span class="badge" style="ba
 <button class="btn" onclick="togglePolls()">Alternativas${pendingPolls?'<span class=req-badge>'+pendingPolls+'</span>':''}</button>
 <button class="btn" onclick="toggleRequests()">Solicitudes${pendingReqs&&isEditor?'<span class=req-badge>'+pendingReqs+'</span>':''}</button>
 ${isEditor?'<button class="btn" onclick="toggleRangeMark()">Marcar rango</button>':''}
+${isEditor?'<button class="btn" style="padding:9px 10px" title="Diagnóstico" onclick="runDiagnostic()">🔧</button>':''}
 ${isEditor?'<button class="btn btn-dark" onclick="toggleLocMgr()">Destinos</button>':''}
 ${!isEditor?'<button class="btn-request" onclick="toggleRequestForm()">Solicitar dias con Ini</button>':''}
 </div></div>`;
@@ -352,7 +398,7 @@ h+=`<div class="nav">
 
 h+='<div class="legend">';state.locations.forEach(l=>{h+=`<span class="leg-item"><span class="swatch" style="background:${l.color}"></span>${l.name} <span class="leg-count" style="color:${darken(l.color)}">${counts[l.id]||0}d</span></span>`;});h+='</div>';
 
-if(state.lastError)h+=`<div class="banner" style="background:#f0b6c5;cursor:default"><span class="banner-icon">⚠️</span><span style="flex:1"><b>Error cargando datos</b><br><span style="font-size:12px">${state.lastError}</span></span><button style="border:none;background:rgba(0,0,0,.1);border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer" onclick="manualRefresh()">Reintentar</button></div>`;
+if(state.lastError)h+=`<div class="banner" style="background:#f0b6c5;cursor:default"><span class="banner-icon">⚠️</span><span style="flex:1"><b>Error cargando datos</b><br><span style="font-size:12px">${state.lastError}</span></span><button style="border:none;background:rgba(0,0,0,.15);border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer;margin-right:6px" onclick="runDiagnostic()">Diagnóstico</button><button style="border:none;background:rgba(0,0,0,.1);border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer" onclick="manualRefresh()">Reintentar</button></div>`;
 
 if(pendingPolls>0)h+=`<div class="banner" style="background:linear-gradient(135deg,#fde2a7,#f5c6a0)" onclick="togglePolls()"><span class="banner-icon">🔔</span><span>Tienes <b>${pendingPolls}</b> alternativa${pendingPolls>1?'s':''} pendiente${pendingPolls>1?'s':''}</span><span class="banner-arrow">&rarr;</span></div>`;
 // Javitxu: banner for new approved solicitudes
@@ -517,6 +563,16 @@ if(poll){h+=`<div class="overlay" onclick="state.votingPoll=null;render()"><div 
 if(poll.note)h+='<div class="req-note" style="margin-bottom:12px">'+poll.note+'</div>';
 state.voteOrder.forEach((oi,pos)=>{h+=`<div class="vote-item"><span class="poll-rank">${pos+1}</span><span style="flex:1;font-size:14px">${formatOption(poll.options[oi])}</span><button class="vote-arrow" onclick="moveVote(${pos},-1)" ${pos===0?'disabled':''}>&blacktriangle;</button><button class="vote-arrow" onclick="moveVote(${pos},1)" ${pos===state.voteOrder.length-1?'disabled':''}>&blacktriangledown;</button></div>`;});
 h+=`<button class="btn btn-dark" style="width:100%;margin-top:12px;padding:12px" onclick="submitVote('${poll.id}')">Enviar voto</button></div></div>`;}}
+
+// Diagnóstico
+if(state.showDebug){
+h+=`<div class="overlay" onclick="state.showDebug=false;render()"><div class="sheet" onclick="event.stopPropagation()" style="max-width:640px"><div class="sheet-head"><div class="sheet-title">🔧 Diagnóstico</div><button class="close" onclick="state.showDebug=false;render()">&times;</button></div>
+<pre style="font-size:11px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:#1e1a16;color:#e8e2d6;padding:14px;border-radius:10px;overflow:auto;max-height:60vh;white-space:pre-wrap;word-break:break-all;line-height:1.5">${(state.debugOutput||'(sin datos)').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre>
+<div style="display:flex;gap:8px;margin-top:12px">
+<button class="btn" style="flex:1" onclick="navigator.clipboard.writeText(state.debugOutput).then(()=>flash('Copiado.'))">📋 Copiar</button>
+<button class="btn btn-dark" style="flex:1" onclick="runDiagnostic()">🔄 Volver a probar</button>
+</div>
+</div></div>`;}
 
 // Marcar rango
 if(state.showRangeMark&&isEditor){
