@@ -73,6 +73,12 @@ input[type=range].rng:disabled{opacity:.35}
 #detalleHoy.visible{display:block}
 .met3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px}
 
+.metGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:14px}
+.mTile{background:var(--panel);border-radius:12px;padding:9px 4px 7px;text-align:center;min-width:0}
+.mTile b{font-family:'Sora',sans-serif;font-weight:600;font-size:14.5px;display:block;font-variant-numeric:tabular-nums;white-space:nowrap}
+.mTile b i{font-style:normal;font-size:9px;color:var(--gris);margin-left:2px;font-family:'Manrope',sans-serif}
+.mTile span{font-size:9.5px;color:var(--gris);display:block;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
 .slfila{display:flex;align-items:center;gap:12px;margin-bottom:14px}
 .slfila:last-child{margin-bottom:0}
 .slfila span.nom{font-size:13px;color:#C7CDD6;width:96px;flex:none}
@@ -170,6 +176,7 @@ svg.spark{width:100%;height:58px;display:block}
       <div class="det" id="detalleR"></div>
     </div>
   </div>
+  <div class="metGrid" id="metGrid" style="display:none"></div>
   <div id="detalleHoy">
     <div class="met3">
       <div><label for="hrv">HRV (ms)</label><input type="number" id="hrv" inputmode="decimal" placeholder="—"></div>
@@ -468,18 +475,51 @@ $('btnEditarHoy').addEventListener('click', function(){
   if (!abierto) lineaHoy();
 });
 function lineaHoy(){
-  var partes = [];
-  if ($('hrv').value) partes.push('HRV ' + $('hrv').value + ' ms');
-  if ($('sueno').value) partes.push('Sueño ' + $('sueno').value + ' h');
-  if ($('fcr').value) partes.push('FC ' + $('fcr').value);
-  if (estado.extras){
-    if (estado.extras.resp) partes.push(estado.extras.resp + ' rpm');
-    if (estado.extras.temp) partes.push(estado.extras.temp + '°');
-  }
-  if (partes.length) $('metHoy').textContent = partes.join(' · ');
+  var hoy = Object.assign({}, estado.hoyDatos || {});
+  if ($('hrv').value) hoy.hrv = parseFloat($('hrv').value);
+  if ($('sueno').value) hoy.sueno_h = parseFloat($('sueno').value);
+  if ($('fcr').value) hoy.fc_reposo = parseFloat($('fcr').value);
+  if (Object.keys(hoy).length) pintarMetricas(hoy);
 }
 
 /* ---------- pintar estado ---------- */
+function pintarMetricas(hoy){
+  var grid = $('metGrid');
+  if (!hoy){ grid.style.display='none'; return; }
+  var defs = [
+    ['hrv', 'HRV', 'ms', 1],
+    ['sueno_h', 'Sueño', 'h', 1],
+    ['sueno_prof_h', 'Profundo', 'h', 1],
+    ['sueno_rem_h', 'REM', 'h', 1],
+    ['fc_reposo', 'FC reposo', 'ppm', 0],
+    ['resp_min', 'Respiración', 'rpm', 1],
+    ['temp_munyeca', 'Temp. muñeca', '°', 1],
+    ['spo2', 'SpO2', '%', 0],
+    ['pasos', 'Pasos', '', 0],
+    ['kcal_activas', 'Kcal activas', '', 0],
+    ['peso', 'Peso', 'kg', 1]
+  ];
+  grid.innerHTML = '';
+  var n = 0;
+  defs.forEach(function(d){
+    var v = hoy[d[0]];
+    if (v === null || v === undefined || v === '') return;
+    var num = Number(v);
+    if (isNaN(num)) return;
+    var texto = (d[0]==='pasos' || d[0]==='kcal_activas')
+      ? Math.round(num).toLocaleString('es-ES')
+      : (d[3] ? (Math.round(num*10)/10) : Math.round(num)).toLocaleString('es-ES');
+    var t = document.createElement('div'); t.className='mTile';
+    var b = document.createElement('b'); b.textContent = texto;
+    if (d[2]){ var u = document.createElement('i'); u.textContent = d[2]; b.appendChild(u); }
+    var s = document.createElement('span'); s.textContent = d[1];
+    t.appendChild(b); t.appendChild(s); grid.appendChild(t);
+    n++;
+  });
+  grid.style.display = n ? 'grid' : 'none';
+  if (n) $('metHoy').textContent = 'Tus datos de hoy:';
+}
+
 function pintarReadiness(r){
   if (!r) return;
   var colores = { verde:'var(--verde)', ambar:'var(--ambar)', rojo:'var(--rojo)' };
@@ -496,6 +536,8 @@ function pintarReadiness(r){
   $('detalleR').textContent = (r.detalle && r.detalle.length) ? r.detalle.join(' · ') : (tiene ? 'Todo en orden según tus datos.' : '');
   if (r.hoy){
     estado.extras = { resp: r.hoy.resp_min || null, temp: r.hoy.temp_munyeca || null };
+    estado.hoyDatos = r.hoy;
+    pintarMetricas(r.hoy);
     if (r.hoy.hrv && !$('hrv').value) $('hrv').value = r.hoy.hrv;
     if (r.hoy.sueno_h && !$('sueno').value) $('sueno').value = r.hoy.sueno_h;
     if (r.hoy.fc_reposo && !$('fcr').value) $('fcr').value = r.hoy.fc_reposo;
